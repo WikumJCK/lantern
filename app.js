@@ -108,6 +108,9 @@ function renderStatus() {
     $('lBriV').textContent = s.light.brightness + '%';
   }
   $('sUnread').textContent = s.unread ?? '–';
+  const b = s.battery;
+  $('sBat').innerHTML = !b ? 'not fitted' : b.source === 'usb' ? 'plugged in'
+    : `<span style="color:${b.pct <= 15 ? 'var(--bad)' : 'inherit'}">${b.pct}%</span> <span class="muted small">${(b.mv / 1000).toFixed(2)} V</span>`;
   $('sSeen').textContent = s.time ? (s.online ? 'now' : ago(s.time)) : '–';
   $('fwVer').textContent = s.fw || '–';
   $('sWifi').textContent = s.ssid || '–';
