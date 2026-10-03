@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#1a0d18">
+<title>Lantern</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Lantern">
+<link rel="stylesheet" href="style.css">
+<script src="https://unpkg.com/mqtt@5.10.1/dist/mqtt.min.js"></script>
+</head>
+<body>
+
+<!-- Login -->
+<section id="login" class="screen" hidden>
+  <div class="brand big">Sath <span class="heart">&#10084;</span> Wikum</div>
+  <p class="muted">Connect to the lantern. These details stay on this device.</p>
+  <form id="loginForm" class="card">
+    <label>Broker (WebSocket URL)<input id="lBroker" required value="wss://broker.hivemq.com:8884/mqtt"></label>
+    <label>Topic root<input id="lRoot" required placeholder="lantern-..."></label>
+    <label>Username<input id="lUser" autocomplete="username"></label>
+    <label>Password<input id="lPass" type="password" autocomplete="current-password"></label>
+    <button type="submit">Connect</button>
+  </form>
+</section>
+
+<!-- App -->
+<section id="app" class="screen" hidden>
+  <header>
+    <div class="brand">Sath <span class="heart">&#10084;</span> Wikum</div>
+    <span id="pill" class="pill off">offline</span>
+  </header>
+
+  <nav id="tabs">
+    <button data-tab="home" class="on">Home</button>
+    <button data-tab="light">Light</button>
+    <button data-tab="picture">Picture</button>
+    <button data-tab="schedule">Schedule</button>
+    <button data-tab="settings">Settings</button>
+  </nav>
+
+  <!-- Home: status, send message, hug, conversation -->
+  <div class="tab" id="tab-home">
+    <div class="card status">
+      <div><span class="k">Mood</span><span id="sMood">–</span></div>
+      <div><span class="k">Light</span><span id="sLight">–</span></div>
+      <div><span class="k">Unread</span><span id="sUnread">–</span></div>
+      <div><span class="k">Last seen</span><span id="sSeen">–</span></div>
+    </div>
+
+    <form id="msgForm" class="card">
+      <textarea id="msgText" rows="3" maxlength="600" placeholder="Write something sweet..." required></textarea>
+      <div class="row">
+        <label class="inline">Glow <input type="color" id="msgColor" value="#ff2d78"></label>
+        <select id="msgAnim">
+          <option value="pulse">Pulse</option>
+          <option value="heartbeat">Heartbeat</option>
+          <option value="rainbow">Rainbow</option>
+        </select>
+        <button type="submit">Send</button>
+      </div>
+    </form>
+
+    <button id="hugBtn" class="hug">Send a hug &#129303;</button>
+
+    <h2>Conversation</h2>
+    <ul id="history" class="history"></ul>
+  </div>
+
+  <!-- Light -->
+  <div class="tab" id="tab-light" hidden>
+    <div class="card">
+      <label>Effect
+        <select id="lMode">
+          <option>Candle</option><option>Solid</option><option>Breathe</option><option>Rainbow</option>
+          <option>Sunset</option><option>Heartbeat</option><option>Pulse</option><option>Off</option>
+        </select>
+      </label>
+      <div class="row">
+        <label class="inline">Colour <input type="color" id="lColor" value="#ff8c30"></label>
+        <label class="inline">Second <input type="color" id="lColor2" value="#ff2060"></label>
+      </div>
+      <label>Brightness <span id="lBriV"></span><input type="range" id="lBri" min="0" max="100" value="60"></label>
+      <label>Speed <span id="lSpdV"></span><input type="range" id="lSpd" min="1" max="255" value="128"></label>
+      <p class="muted small">Changes apply live and are saved on the lantern.</p>
+    </div>
+    <div class="swatches" id="presets"></div>
+  </div>
+
+  <!-- Picture -->
+  <div class="tab" id="tab-picture" hidden>
+    <div class="card">
+      <h3>Photo</h3>
+      <input type="file" id="picFile" accept="image/*">
+      <p class="muted small">Cropped to a square and shrunk to 128&times;128 for the lantern's screen.</p>
+    </div>
+    <div class="card">
+      <h3>Pixel art</h3>
+      <div id="palette" class="palette"></div>
+      <canvas id="pixel" width="256" height="256" class="pixelgrid"></canvas>
+      <div class="row"><button type="button" id="pxClear" class="ghost">Clear</button><button type="button" id="pxUse">Use drawing</button></div>
+    </div>
+    <div class="card" id="picSendCard" hidden>
+      <h3>Preview</h3>
+      <canvas id="picPreview" width="128" height="128" class="preview"></canvas>
+      <input id="picCaption" maxlength="200" placeholder="Caption (optional)">
+      <div class="row"><span id="picSize" class="muted small"></span><button id="picSend">Send picture</button></div>
+      <progress id="picProg" max="1" value="0" hidden></progress>
+    </div>
+  </div>
+
+  <!-- Schedule -->
+  <div class="tab" id="tab-schedule" hidden>
+    <form id="schedForm" class="card">
+      <label>When<input type="datetime-local" id="schedAt" required></label>
+      <textarea id="schedText" rows="2" maxlength="600" placeholder="Good morning, beautiful..." required></textarea>
+      <button type="submit">Schedule</button>
+    </form>
+    <p class="muted small">Stored on the lantern, so it arrives on time even if your phone is off.</p>
+    <ul id="schedList" class="history"></ul>
+  </div>
+
+  <!-- Settings -->
+  <div class="tab" id="tab-settings" hidden>
+    <form id="cfgForm" class="card">
+      <h3>Quiet hours</h3>
+      <label class="inline"><input type="checkbox" id="cQuiet"> Dim the lantern and stop buzzing at night</label>
+      <div class="row">
+        <label class="inline">From <input type="time" id="cQStart" value="22:00"></label>
+        <label class="inline">To <input type="time" id="cQEnd" value="07:00"></label>
+      </div>
+      <h3>Her birthday</h3>
+      <div class="row">
+        <select id="cBMonth"></select>
+        <select id="cBDay"></select>
+      </div>
+      <h3>Weather location</h3>
+      <div class="row"><input id="cCity" placeholder="Automatic (from internet address)"><button type="button" id="cFind" class="ghost">Find</button></div>
+      <p id="cCityHint" class="muted small"></p>
+      <button type="submit">Save settings</button>
+    </form>
+
+    <div class="card">
+      <h3>Firmware</h3>
+      <p class="muted small">Running <b id="fwVer">–</b>. Paste the release details from <code>tools/release.ps1</code>.</p>
+      <label>Firmware URL<input id="otaUrl" placeholder="https://github.com/.../firmware.bin"></label>
+      <label>Version<input id="otaVer" placeholder="0.3.0"></label>
+      <label>SHA-256<input id="otaSha" placeholder="64 hex characters"></label>
+      <button id="otaBtn">Update lantern</button>
+      <p id="otaStatus" class="muted small"></p>
+    </div>
+
+    <div class="card">
+      <h3>Lantern</h3>
+      <div class="status">
+        <div><span class="k">Wi-Fi</span><span id="sWifi">–</span></div>
+        <div><span class="k">Signal</span><span id="sRssi">–</span></div>
+        <div><span class="k">Up</span><span id="sUp">–</span></div>
+        <div><span class="k">Memory</span><span id="sHeap">–</span></div>
+      </div>
+      <div class="row"><button id="clearBtn" class="ghost">Clear her inbox</button><button id="logoutBtn" class="ghost">Sign out</button></div>
+    </div>
+  </div>
+</section>
+
+<div id="toast" class="toast" hidden></div>
+<script src="app.js"></script>
+</body>
+</html>
